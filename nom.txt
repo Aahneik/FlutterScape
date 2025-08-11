@@ -1,0 +1,1164 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'dart:async';
+
+void main() {
+  runApp(const FlutterScape());
+}
+
+class FlutterScape extends StatelessWidget {
+  const FlutterScape({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'FlutterScape',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const SplashScreen(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _navigateToHome();
+  }
+
+  _navigateToHome() async {
+    await Future.delayed(const Duration(seconds: 3));
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(opacity: animation, child: child);
+          },
+          transitionDuration: const Duration(milliseconds: 800),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF6366F1),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.landscape,
+                size: 60,
+                color: Color(0xFF6366F1),
+              ),
+            )
+                .animate()
+                .scale(duration: 600.ms, curve: Curves.elasticOut)
+                .fadeIn(duration: 800.ms),
+            const SizedBox(height: 30),
+            const Text(
+              'FlutterScape',
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            )
+                .animate(delay: 300.ms)
+                .slideY(begin: 0.3, duration: 600.ms)
+                .fadeIn(duration: 600.ms),
+            const SizedBox(height: 10),
+            const Text(
+              'Explore your productive side',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white70,
+              ),
+            )
+                .animate(delay: 600.ms)
+                .slideY(begin: 0.3, duration: 600.ms)
+                .fadeIn(duration: 600.ms),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AppData {
+  static int totalSessions = 0;
+  static int totalMinutes = 0;
+  static int currentStreak = 0;
+  static bool notificationsEnabled = true;
+  static bool autoStartEnabled = false;
+  static int defaultTimerMinutes = 25;
+}
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+  Timer? _timer;
+  int _remainingSeconds = 1500;
+  bool _isRunning = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  String? _currentSound;
+  double _volume = 0.5;
+  late AnimationController _timerAnimationController;
+  late AnimationController _pulseAnimationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _remainingSeconds = AppData.defaultTimerMinutes * 60;
+    _timerAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _pulseAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _audioPlayer.setReleaseMode(ReleaseMode.loop);
+    _audioPlayer.setVolume(_volume);
+  }
+
+  void _startTimer() {
+    setState(() {
+      _isRunning = true;
+    });
+    _timerAnimationController.forward();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+        } else {
+          _stopTimer();
+          _showCompletionDialog();
+          _updateStats();
+        }
+      });
+    });
+  }
+
+  void _updateStats() {
+    AppData.totalSessions++;
+    AppData.totalMinutes += AppData.defaultTimerMinutes;
+    AppData.currentStreak++;
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timerAnimationController.reverse();
+    setState(() {
+      _isRunning = false;
+      _remainingSeconds = AppData.defaultTimerMinutes * 60;
+    });
+  }
+
+  void _pauseTimer() {
+    _timer?.cancel();
+    _timerAnimationController.reverse();
+    setState(() {
+      _isRunning = false;
+    });
+  }
+
+  void _showCompletionDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('🎉 Session Complete!'),
+          content: const Text('Great job! You\'ve completed your session.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Awesome!'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _formatTime(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _playSound(String soundId, String assetPath, String title) async {
+    try {
+      if (_currentSound == soundId) {
+        await _audioPlayer.stop();
+        setState(() {
+          _currentSound = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Stopped $title')),
+        );
+      } else {
+        await _audioPlayer.play(AssetSource(assetPath));
+        setState(() {
+          _currentSound = soundId;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Playing $title')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Audio file not found - $title')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _audioPlayer.dispose();
+    _timerAnimationController.dispose();
+    _pulseAnimationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F7),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: const BoxDecoration(
+                color: Color(0xFF6366F1),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.landscape,
+                    size: 48,
+                    color: Colors.white,
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'FlutterScape',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    'Explore your productive side',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.home),
+              title: const Text('Home'),
+              onTap: () {
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.bar_chart),
+              title: const Text('Statistics'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const StatisticsScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info),
+              title: const Text('About'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const AboutScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.help),
+              title: const Text('Help'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HelpScreen()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'FlutterScape',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ).animate().slideX(duration: 600.ms).fadeIn(),
+                  Row(
+                    children: [
+                      const Icon(Icons.volume_down, color: Colors.grey, size: 20),
+                      SizedBox(
+                        width: 80,
+                        child: Slider(
+                          value: _volume,
+                          onChanged: (value) {
+                            setState(() {
+                              _volume = value;
+                            });
+                            _audioPlayer.setVolume(value);
+                          },
+                          activeColor: const Color(0xFF6366F1),
+                        ),
+                      ),
+                      const Icon(Icons.volume_up, color: Colors.grey, size: 20),
+                    ],
+                  ).animate(delay: 200.ms).slideX(begin: 0.3).fadeIn(),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 15,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    AnimatedBuilder(
+                      animation: _pulseAnimationController,
+                      builder: (context, child) {
+                        return Transform.scale(
+                          scale: _isRunning ? 1.0 + (_pulseAnimationController.value * 0.05) : 1.0,
+                          child: Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: _isRunning ? const Color(0xFF10B981) : const Color(0xFF6366F1),
+                                width: 3,
+                              ),
+                              boxShadow: _isRunning
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(0xFF10B981).withOpacity(0.3),
+                                        blurRadius: 10,
+                                        spreadRadius: 2,
+                                      ),
+                                    ]
+                                  : [],
+                            ),
+                            child: Center(
+                              child: Text(
+                                _formatTime(_remainingSeconds),
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _isRunning ? 'Session Active' : 'Ready to Explore',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey,
+                      ),
+                    ).animate().fadeIn(duration: 300.ms),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        if (!_isRunning)
+                          ElevatedButton(
+                            onPressed: _startTimer,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF6366F1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                            ),
+                            child: const Text('Start Session'),
+                          ).animate().scale(duration: 200.ms),
+                        if (_isRunning)
+                          ElevatedButton(
+                            onPressed: _pauseTimer,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFF59E0B),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                            ),
+                            child: const Text('Pause'),
+                          ).animate().scale(duration: 200.ms),
+                        if (_isRunning || _remainingSeconds < AppData.defaultTimerMinutes * 60)
+                          ElevatedButton(
+                            onPressed: _stopTimer,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFEF4444),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(25),
+                              ),
+                            ),
+                            child: const Text('Stop'),
+                          ).animate().scale(duration: 200.ms),
+                      ],
+                    ),
+                  ],
+                ),
+              ).animate(delay: 200.ms).slideY(duration: 600.ms).fadeIn(),
+              const SizedBox(height: 30),
+              const Text(
+                '🎵 Sound Library',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ).animate(delay: 400.ms).slideX(duration: 600.ms).fadeIn(),
+              const SizedBox(height: 20),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _buildSoundItem('rain', 'Gentle Rain', 'Soft rainfall sounds', Icons.grain, Colors.blue, 'sounds/rain.mp3', 0),
+                    _buildSoundItem('forest', 'Forest Birds', 'Peaceful forest ambience', Icons.eco, Colors.green, 'sounds/forest.mp3', 1),
+                    _buildSoundItem('ocean', 'Ocean Waves', 'Relaxing wave sounds', Icons.waves, Colors.cyan, 'sounds/ocean.mp3', 2),
+                    _buildSoundItem('fire', 'Cozy Fire', 'Warm crackling fire', Icons.local_fire_department, Colors.orange, 'sounds/fire.mp3', 3),
+                    _buildSoundItem('cafe', 'Coffee Shop', 'Cozy cafe ambience', Icons.coffee, Colors.brown, 'sounds/cafe.mp3', 4),
+                    _buildSoundItem('thunder', 'Distant Thunder', 'Rolling thunder sounds', Icons.flash_on, Colors.indigo, 'sounds/thunder.mp3', 5),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSoundItem(String soundId, String title, String subtitle, IconData icon, Color color, String assetPath, int index) {
+    final isPlaying = _currentSound == soundId;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _playSound(soundId, assetPath, title),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: isPlaying ? Border.all(color: const Color(0xFF6366F1), width: 2) : null,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 20,
+                  ),
+                ).animate().scale(duration: 200.ms),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isPlaying ? const Color(0xFF6366F1) : Colors.grey[100],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isPlaying ? Icons.pause : Icons.play_arrow,
+                    color: isPlaying ? Colors.white : Colors.grey[600],
+                    size: 20,
+                  ),
+                ).animate().scale(duration: 150.ms),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate(delay: Duration(milliseconds: 600 + (index * 100))).slideX(begin: 0.3).fadeIn(duration: 600.ms);
+  }
+}
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F7),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        backgroundColor: const Color(0xFF6366F1),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Timer Settings',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Default Timer Duration'),
+                      DropdownButton<int>(
+                        value: AppData.defaultTimerMinutes,
+                        items: const [
+                          DropdownMenuItem(value: 5, child: Text('5 min')),
+                          DropdownMenuItem(value: 15, child: Text('15 min')),
+                          DropdownMenuItem(value: 25, child: Text('25 min')),
+                          DropdownMenuItem(value: 45, child: Text('45 min')),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            AppData.defaultTimerMinutes = value!;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Auto-Start Sessions'),
+                    subtitle: const Text('Automatically start timer when opening app'),
+                    value: AppData.autoStartEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        AppData.autoStartEnabled = value;
+                      });
+                    },
+                    activeColor: const Color(0xFF6366F1),
+                  ),
+                  SwitchListTile(
+                    title: const Text('Notifications'),
+                    subtitle: const Text('Get notified when session completes'),
+                    value: AppData.notificationsEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        AppData.notificationsEnabled = value;
+                      });
+                    },
+                    activeColor: const Color(0xFF6366F1),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class StatisticsScreen extends StatelessWidget {
+  const StatisticsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F7),
+      appBar: AppBar(
+        title: const Text('Statistics'),
+        backgroundColor: const Color(0xFF6366F1),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildStatCard('Sessions', AppData.totalSessions.toString(), Icons.play_arrow, Colors.blue),
+                      _buildStatCard('Minutes', AppData.totalMinutes.toString(), Icons.timer, Colors.green),
+                      _buildStatCard('Streak', '${AppData.currentStreak} days', Icons.local_fire_department, Colors.orange),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Recent Activity',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (AppData.totalSessions == 0)
+                    const Text(
+                      'No sessions completed yet. Start your first session!',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey,
+                      ),
+                    )
+                  else
+                    Column(
+                      children: [
+                        _buildActivityItem('Last session completed', '${AppData.defaultTimerMinutes} minutes'),
+                        _buildActivityItem('Total focus time', '${AppData.totalMinutes} minutes'),
+                        _buildActivityItem('Average session', '${AppData.totalSessions > 0 ? (AppData.totalMinutes / AppData.totalSessions).toInt() : 0} minutes'),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 24,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
+        ),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActivityItem(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 14, color: Colors.black87),
+          ),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF6366F1)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F7),
+      appBar: AppBar(
+        title: const Text('About'),
+        backgroundColor: const Color(0xFF6366F1),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.landscape,
+                    size: 80,
+                    color: Color(0xFF6366F1),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'FlutterScape',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Version 1.0.0',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'FlutterScape is a productivity app designed to help you focus and maintain concentration through timed sessions and ambient sounds.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black87,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Column(
+                      children: [
+                        Text(
+                          'Features',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF6366F1),
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          '• Customizable focus timers\n• Ambient sound library\n• Session statistics\n• Beautiful animations\n• Simple, clean interface',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.black87,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Credits',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Developed with Flutter\nBuilt for productivity enthusiasts\n\n© 2024 FlutterScape',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class HelpScreen extends StatelessWidget {
+  const HelpScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F7),
+      appBar: AppBar(
+        title: const Text('Help'),
+        backgroundColor: const Color(0xFF6366F1),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: ListView(
+          children: [
+            _buildHelpSection(
+              'Getting Started',
+              [
+                'Tap "Start Session" to begin a focus timer',
+                'Choose from ambient sounds to help you concentrate',
+                'Use the volume slider to adjust sound levels',
+                'Pause or stop your session anytime',
+              ],
+              Icons.play_arrow,
+              Colors.blue,
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Timer Controls',
+              [
+                'Start: Begin a new focus session',
+                'Pause: Temporarily stop the timer',
+                'Stop: End the session and reset timer',
+                'Default session is 25 minutes (Pomodoro technique)',
+              ],
+              Icons.timer,
+              Colors.green,
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Sound Library',
+              [
+                'Tap any sound to start/stop playback',
+                'Sounds will loop continuously while playing',
+                'Only one sound can play at a time',
+                'Adjust volume using the top slider',
+              ],
+              Icons.library_music,
+              Colors.purple,
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Settings & Statistics',
+              [
+                'Change default timer duration in Settings',
+                'View your progress in Statistics',
+                'Enable notifications for session completion',
+                'Toggle auto-start feature for convenience',
+              ],
+              Icons.settings,
+              Colors.orange,
+            ),
+            const SizedBox(height: 16),
+            _buildHelpSection(
+              'Tips for Better Focus',
+              [
+                'Find a quiet, comfortable workspace',
+                'Put your phone in airplane mode',
+                'Choose sounds that don\'t distract you',
+                'Take breaks between sessions',
+                'Stay hydrated and stretch regularly',
+              ],
+              Icons.lightbulb,
+              Colors.amber,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelpSection(String title, List<String> items, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...items.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 6, right: 8),
+                      width: 4,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
