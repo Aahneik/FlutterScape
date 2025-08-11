@@ -258,6 +258,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
+// FIXED: Persistent AppData with SharedPreferences
 class AppData {
   static int totalSessions = 0;
   static int totalMinutes = 0;
@@ -265,6 +266,44 @@ class AppData {
   static bool notificationsEnabled = true;
   static bool autoStartEnabled = false;
   static int defaultTimerMinutes = 25;
+
+  // Load data from SharedPreferences
+  static Future<void> loadData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      totalSessions = prefs.getInt('totalSessions') ?? 0;
+      totalMinutes = prefs.getInt('totalMinutes') ?? 0;
+      currentStreak = prefs.getInt('currentStreak') ?? 0;
+      notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
+      autoStartEnabled = prefs.getBool('autoStartEnabled') ?? false;
+      defaultTimerMinutes = prefs.getInt('defaultTimerMinutes') ?? 25;
+    } catch (e) {
+      // Keep default values if loading fails
+    }
+  }
+
+  // Save data to SharedPreferences
+  static Future<void> saveData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('totalSessions', totalSessions);
+      await prefs.setInt('totalMinutes', totalMinutes);
+      await prefs.setInt('currentStreak', currentStreak);
+      await prefs.setBool('notificationsEnabled', notificationsEnabled);
+      await prefs.setBool('autoStartEnabled', autoStartEnabled);
+      await prefs.setInt('defaultTimerMinutes', defaultTimerMinutes);
+    } catch (e) {
+      // Continue even if saving fails
+    }
+  }
+
+  // Update statistics and save
+  static Future<void> updateStats() async {
+    totalSessions++;
+    totalMinutes += defaultTimerMinutes;
+    currentStreak++;
+    await saveData();
+  }
 }
 
 class HomeScreen extends StatefulWidget {
@@ -287,7 +326,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _remainingSeconds = AppData.defaultTimerMinutes * 60;
+    _loadAppData();
     _timerAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -300,6 +339,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     const sounds = ['rain', 'forest', 'ocean', 'fire', 'cafe', 'thunder'];
     for (String sound in sounds) {
       _soundVolumes[sound] = 0.5;
+    }
+  }
+
+  // FIXED: Load app data and set timer duration
+  Future<void> _loadAppData() async {
+    await AppData.loadData();
+    setState(() {
+      _remainingSeconds = AppData.defaultTimerMinutes * 60;
+    });
+  }
+
+  // FIXED: Update timer when returning from Settings
+  void _updateTimerFromSettings() {
+    if (!_isRunning) {
+      setState(() {
+        _remainingSeconds = AppData.defaultTimerMinutes * 60;
+      });
     }
   }
 
@@ -321,10 +377,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  void _updateStats() {
-    AppData.totalSessions++;
-    AppData.totalMinutes += AppData.defaultTimerMinutes;
-    AppData.currentStreak++;
+  // FIXED: Use AppData.updateStats() method
+  void _updateStats() async {
+    await AppData.updateStats();
   }
 
   void _stopTimer() {
@@ -481,16 +536,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         _buildGlassListTile(Icons.home, 'Home', () => Navigator.pop(context)),
-                        _buildGlassListTile(Icons.settings, 'Settings', () {
+                        _buildGlassListTile(Icons.settings, 'Settings', () async {
                           Navigator.pop(context);
-                          Navigator.push(
+                          // FIXED: Wait for settings and then update timer
+                          await Navigator.push(
                             context,
                             MaterialPageRoute(builder: (context) => const SettingsScreen()),
                           );
+                          _updateTimerFromSettings();
                         }),
-                        _buildGlassListTile(Icons.bar_chart, 'Statistics', () => Navigator.pop(context)),
-                        _buildGlassListTile(Icons.info, 'About', () => Navigator.pop(context)),
-                        _buildGlassListTile(Icons.help, 'Help', () => Navigator.pop(context)),
+                        _buildGlassListTile(Icons.bar_chart, 'Statistics', () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const StatisticsScreen()),
+                          );
+                        }),
+                        _buildGlassListTile(Icons.info, 'About', () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const AboutScreen()),
+                          );
+                        }),
+                        _buildGlassListTile(Icons.help, 'Help', () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const HelpScreen()),
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -1004,10 +1079,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           DropdownMenuItem(value: 25, child: Text('25 min', style: TextStyle(color: Colors.white))),
                                           DropdownMenuItem(value: 45, child: Text('45 min', style: TextStyle(color: Colors.white))),
                                         ],
-                                        onChanged: (value) {
+                                        onChanged: (value) async {
                                           setState(() {
                                             AppData.defaultTimerMinutes = value!;
                                           });
+                                          // FIXED: Save settings immediately
+                                          await AppData.saveData();
                                         },
                                       ),
                                     ),
@@ -1034,10 +1111,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     ),
                                     Switch(
                                       value: AppData.autoStartEnabled,
-                                      onChanged: (value) {
+                                      onChanged: (value) async {
                                         setState(() {
                                           AppData.autoStartEnabled = value;
                                         });
+                                        // FIXED: Save settings immediately
+                                        await AppData.saveData();
                                       },
                                       activeColor: Colors.white,
                                     ),
@@ -1064,10 +1143,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     ),
                                     Switch(
                                       value: AppData.notificationsEnabled,
-                                      onChanged: (value) {
+                                      onChanged: (value) async {
                                         setState(() {
                                           AppData.notificationsEnabled = value;
                                         });
+                                        // FIXED: Save settings immediately
+                                        await AppData.saveData();
                                       },
                                       activeColor: Colors.white,
                                     ),
@@ -1104,5 +1185,408 @@ class _SettingsScreenState extends State<SettingsScreen> {
       default:
         return themeName;
     }
+  }
+}
+
+// Statistics Screen - FIXED: Now shows real data
+class StatisticsScreen extends StatelessWidget {
+  const StatisticsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeManager>(
+      builder: (context, themeManager, child) {
+        final colors = themeManager.currentColors;
+        return Scaffold(
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors['primary']!,
+                  colors['secondary']!,
+                ],
+              ),
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: PreferredSize(
+                preferredSize: const Size.fromHeight(kToolbarHeight),
+                child: ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: AppBar(
+                      title: const Text('Statistics'),
+                      backgroundColor: Colors.white.withOpacity(0.1),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ),
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.25),
+                              Colors.white.withOpacity(0.1),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        ),
+                        child: Column(
+                          children: [
+                            const Text(
+                              'Your Statistics',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(height: 30),
+                            // FIXED: Load and display actual statistics
+                            FutureBuilder(
+                              future: AppData.loadData(),
+                              builder: (context, snapshot) {
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                                  children: [
+                                    _buildStatCard('Sessions', AppData.totalSessions.toString(), Icons.play_arrow),
+                                    _buildStatCard('Minutes', AppData.totalMinutes.toString(), Icons.timer),
+                                    _buildStatCard('Streak', '${AppData.currentStreak} days', Icons.local_fire_department),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatCard(String title, String value, IconData icon) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: Colors.white, size: 24),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.white70,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// About Screen
+class AboutScreen extends StatelessWidget {
+  const AboutScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeManager>(
+      builder: (context, themeManager, child) {
+        final colors = themeManager.currentColors;
+        return Scaffold(
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors['primary']!,
+                  colors['secondary']!,
+                ],
+              ),
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: PreferredSize(
+                preferredSize: const Size.fromHeight(kToolbarHeight),
+                child: ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: AppBar(
+                      title: const Text('About'),
+                      backgroundColor: Colors.white.withOpacity(0.1),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ),
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.25),
+                              Colors.white.withOpacity(0.1),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                        ),
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.landscape,
+                              size: 80,
+                              color: Colors.white,
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'FlutterScape',
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Version 1.0.0',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.white70,
+                              ),
+                            ),
+                            SizedBox(height: 16),
+                            Text(
+                              'FlutterScape is a productivity app designed to help you focus and maintain concentration through timed sessions and ambient sounds. Create your own custom soundscapes by playing multiple sounds simultaneously.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.white,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// Help Screen
+class HelpScreen extends StatelessWidget {
+  const HelpScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeManager>(
+      builder: (context, themeManager, child) {
+        final colors = themeManager.currentColors;
+        return Scaffold(
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors['primary']!,
+                  colors['secondary']!,
+                ],
+              ),
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: PreferredSize(
+                preferredSize: const Size.fromHeight(kToolbarHeight),
+                child: ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: AppBar(
+                      title: const Text('Help'),
+                      backgroundColor: Colors.white.withOpacity(0.1),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+              ),
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: ListView(
+                    children: [
+                      _buildHelpSection(
+                        'Getting Started',
+                        [
+                          'Tap "Start Session" to begin a focus timer',
+                          'Choose from ambient sounds to help you concentrate',
+                          'Play multiple sounds simultaneously for custom soundscapes',
+                          'Pause or stop your session anytime',
+                        ],
+                        Icons.play_arrow,
+                        colors,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpSection(
+                        'Multiple Sound Support',
+                        [
+                          'Play multiple ambient sounds at the same time',
+                          'Each sound has its own volume control',
+                          'Create custom soundscapes by mixing different sounds',
+                          'Tap any sound to start/stop it independently',
+                        ],
+                        Icons.library_music,
+                        colors,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpSection(
+                        'Theme Customization',
+                        [
+                          'Choose from multiple color schemes in Settings',
+                          'Themes include Ocean Blue, Purple Mint, and more',
+                          'Your theme choice is automatically saved',
+                          'Each theme provides a unique visual experience',
+                        ],
+                        Icons.palette,
+                        colors,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHelpSection(String title, List<String> items, IconData icon, Map<String, Color> colors) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withOpacity(0.25),
+                Colors.white.withOpacity(0.1),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ...items.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.only(top: 6, right: 8),
+                          width: 4,
+                          height: 4,
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            item,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Colors.white,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
