@@ -234,12 +234,22 @@ class _SplashScreenState extends State<SplashScreen> {
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
-                   child: Image.asset(
-                    'assets/images/your_logo.png',
-                    width: 110,
-                    height: 110,
-                  ),
-
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(25),
+                      child: Image.asset(
+                        'assets/images/your_logo.png',
+                        width: 110,
+                        height: 110,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.landscape,
+                            size: 60,
+                            color: Colors.white,
+                          );
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ).animate().scale(duration: 600.ms, curve: Curves.elasticOut).fadeIn(duration: 800.ms),
@@ -315,6 +325,23 @@ class AppData {
     totalSessions++;
     totalMinutes += defaultTimerMinutes;
     currentStreak++;
+    await saveData();
+  }
+
+  // Add note
+  static Future<void> addNote(String text) async {
+    final note = Note(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      text: text,
+      createdAt: DateTime.now(),
+    );
+    notes.add(note);
+    await saveData();
+  }
+
+  // Delete note
+  static Future<void> deleteNote(String id) async {
+    notes.removeWhere((note) => note.id == id);
     await saveData();
   }
 }
@@ -562,15 +589,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Image.asset(
-                              'assets/images/your_logo.png',
-                              width: 65,
-                              height: 65,
-                            ),
-
-                              SizedBox(height: 12),
-                              Text('FlutterScape', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-                              Text('Explore your productive side', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.asset(
+                                  'assets/images/your_logo.png',
+                                  width: 65,
+                                  height: 65,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(Icons.landscape, size: 48, color: Colors.white);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text('FlutterScape', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                              const Text('Explore your productive side', style: TextStyle(color: Colors.white70, fontSize: 14)),
                             ],
                           ),
                         ),
@@ -934,7 +967,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-      ).animate(delay: Duration(milliseconds: 600 + (index * 100))).slideX(begin: 0.3).fadeIn(duration: 600.ms));
+      ),
+    ).animate(delay: Duration(milliseconds: 600 + (index * 100))).slideX(begin: 0.3).fadeIn(duration: 600.ms);
   }
 }
 
@@ -1418,15 +1452,26 @@ class AboutScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(color: Colors.white.withOpacity(0.2)),
                         ),
-                        child: const Column(
+                        child: Column(
                           children: [
-                            Icon(
-                              Icons.landscape,
-                              size: 80,
-                              color: Colors.white,
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(15),
+                              child: Image.asset(
+                                'assets/images/your_logo.png',
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Icon(
+                                    Icons.landscape,
+                                    size: 80,
+                                    color: Colors.white,
+                                  );
+                                },
+                              ),
                             ),
-                            SizedBox(height: 16),
-                            Text(
+                            const SizedBox(height: 16),
+                            const Text(
                               'FlutterScape',
                               style: TextStyle(
                                 fontSize: 28,
@@ -1434,16 +1479,16 @@ class AboutScreen extends StatelessWidget {
                                 color: Colors.white,
                               ),
                             ),
-                            SizedBox(height: 8),
-                            Text(
+                            const SizedBox(height: 8),
+                            const Text(
                               'Version 1.0.0',
                               style: TextStyle(
                                 fontSize: 16,
                                 color: Colors.white70,
                               ),
                             ),
-                            SizedBox(height: 16),
-                            Text(
+                            const SizedBox(height: 16),
+                            const Text(
                               'FlutterScape is a productivity app designed to help you focus and maintain concentration through timed sessions and ambient sounds. Create your own custom soundscapes by playing multiple sounds simultaneously.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -1530,6 +1575,18 @@ class HelpScreen extends StatelessWidget {
                           'Tap any sound to start/stop it independently',
                         ],
                         Icons.library_music,
+                        colors,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildHelpSection(
+                        'Notes Feature',
+                        [
+                          'Take quick notes during or after your sessions',
+                          'All notes are automatically saved',
+                          'Swipe to delete notes you no longer need',
+                          'Perfect for capturing insights and ideas',
+                        ],
+                        Icons.note,
                         colors,
                       ),
                       const SizedBox(height: 16),
@@ -1636,7 +1693,7 @@ class HelpScreen extends StatelessWidget {
   }
 }
 
-// Notes Screen
+// NEW: Notes Screen
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
 
@@ -1645,7 +1702,37 @@ class NotesScreen extends StatefulWidget {
 }
 
 class _NotesScreenState extends State<NotesScreen> {
-  final _textController = TextEditingController();
+  final TextEditingController _noteController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotes();
+  }
+
+  Future<void> _loadNotes() async {
+    await AppData.loadData();
+    setState(() {});
+  }
+
+  Future<void> _addNote() async {
+    if (_noteController.text.trim().isNotEmpty) {
+      await AppData.addNote(_noteController.text.trim());
+      _noteController.clear();
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Note added successfully!')),
+      );
+    }
+  }
+
+  Future<void> _deleteNote(String id) async {
+    await AppData.deleteNote(id);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Note deleted!')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1653,138 +1740,291 @@ class _NotesScreenState extends State<NotesScreen> {
       builder: (context, themeManager, child) {
         final colors = themeManager.currentColors;
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('Notes'),
-            backgroundColor: colors['primary'],
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.add),
-                onPressed: () => _showAddDialog(),
+          body: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors['primary']!,
+                  colors['secondary']!,
+                ],
               ),
-            ],
-          ),
-          body: ListView.builder(
-            itemCount: AppData.notes.length,
-            itemBuilder: (context, index) {
-              final note = AppData.notes[index];
-              return ListTile(
-                title: Text(note.text),
-                subtitle: Text(
-                  note.createdAt.toString().split('.')[0],
-                  style: const TextStyle(fontSize: 12),
-                ),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _showEditDialog(note),
+            ),
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              appBar: PreferredSize(
+                preferredSize: const Size.fromHeight(kToolbarHeight),
+                child: ClipRRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: AppBar(
+                      title: const Text('Notes'),
+                      backgroundColor: Colors.white.withOpacity(0.1),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => _deleteNote(note),
-                    ),
-                  ],
+                  ),
                 ),
-              );
-            },
+              ),
+              body: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      // Add Note Section
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.white.withOpacity(0.25),
+                                  Colors.white.withOpacity(0.1),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white.withOpacity(0.2)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Add New Note',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: BackdropFilter(
+                                    filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.white.withOpacity(0.3)),
+                                      ),
+                                      child: TextField(
+                                        controller: _noteController,
+                                        maxLines: 3,
+                                        style: const TextStyle(color: Colors.white),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Write your note here...',
+                                          hintStyle: TextStyle(color: Colors.white70),
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.all(16),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(25),
+                                    child: BackdropFilter(
+                                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.white.withOpacity(0.25),
+                                              Colors.white.withOpacity(0.1),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(25),
+                                          border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                        ),
+                                        child: Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: _addNote,
+                                            borderRadius: BorderRadius.circular(25),
+                                            child: const Padding(
+                                              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.add, color: Colors.white, size: 20),
+                                                  SizedBox(width: 8),
+                                                  Text(
+                                                    'Add Note',
+                                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // Notes List
+                      Expanded(
+                        child: AppData.notes.isEmpty
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(40),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.white.withOpacity(0.15),
+                                          Colors.white.withOpacity(0.05),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                    ),
+                                    child: const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.note_alt_outlined,
+                                          size: 64,
+                                          color: Colors.white70,
+                                        ),
+                                        SizedBox(height: 16),
+                                        Text(
+                                          'No notes yet',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Add your first note above to get started',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.white54,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: AppData.notes.length,
+                                itemBuilder: (context, index) {
+                                  final note = AppData.notes[AppData.notes.length - 1 - index]; // Reverse order
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                Colors.white.withOpacity(0.2),
+                                                Colors.white.withOpacity(0.1),
+                                              ],
+                                            ),
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                          ),
+                                          child: Dismissible(
+                                            key: Key(note.id),
+                                            direction: DismissDirection.endToStart,
+                                            onDismissed: (direction) => _deleteNote(note.id),
+                                            background: Container(
+                                              alignment: Alignment.centerRight,
+                                              padding: const EdgeInsets.only(right: 20),
+                                              decoration: BoxDecoration(
+                                                color: Colors.red.withOpacity(0.8),
+                                                borderRadius: BorderRadius.circular(16),
+                                              ),
+                                              child: const Icon(
+                                                Icons.delete,
+                                                color: Colors.white,
+                                                size: 24,
+                                              ),
+                                            ),
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(16),
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    note.text,
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.white,
+                                                      height: 1.4,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Text(
+                                                    _formatDate(note.createdAt),
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ).animate(delay: Duration(milliseconds: index * 100)).slideX(begin: 0.3).fadeIn(duration: 600.ms);
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         );
       },
     );
   }
 
-  void _showAddDialog() {
-    _textController.clear();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Note'),
-        content: TextField(
-          controller: _textController,
-          decoration: const InputDecoration(hintText: 'Enter your note'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (_textController.text.isNotEmpty) {
-                _addNote(_textController.text);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditDialog(Note note) {
-    _textController.text = note.text;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Note'),
-        content: TextField(
-          controller: _textController,
-          decoration: const InputDecoration(hintText: 'Edit your note'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (_textController.text.isNotEmpty) {
-                _editNote(note, _textController.text);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _addNote(String text) {
-    setState(() {
-      AppData.notes.add(Note(
-        id: DateTime.now().toString(),
-        text: text,
-        createdAt: DateTime.now(),
-      ));
-    });
-    AppData.saveData();
-  }
-
-  void _editNote(Note note, String newText) {
-    setState(() {
-      final index = AppData.notes.indexOf(note);
-      AppData.notes[index] = Note(
-        id: note.id,
-        text: newText,
-        createdAt: DateTime.now(),
-      );
-    });
-    AppData.saveData();
-  }
-
-  void _deleteNote(Note note) {
-    setState(() {
-      AppData.notes.remove(note);
-    });
-    AppData.saveData();
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+    
+    if (difference.inDays > 0) {
+      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''} ago';
+    } else {
+      return 'Just now';
+    }
   }
 
   @override
   void dispose() {
-    _textController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
 }
