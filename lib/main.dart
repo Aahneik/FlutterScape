@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'dart:convert';
 
 void main() {
   runApp(const FlutterScape());
@@ -233,11 +234,12 @@ class _SplashScreenState extends State<SplashScreen> {
                       borderRadius: BorderRadius.circular(30),
                       border: Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
-                    child: const Icon(
-                      Icons.landscape,
-                      size: 60,
-                      color: Colors.white,
-                    ),
+                   child: Image.asset(
+                    'assets/images/your_logo.png',
+                    width: 110,
+                    height: 110,
+                  ),
+
                   ),
                 ),
               ).animate().scale(duration: 600.ms, curve: Curves.elasticOut).fadeIn(duration: 800.ms),
@@ -266,6 +268,7 @@ class AppData {
   static bool notificationsEnabled = true;
   static bool autoStartEnabled = false;
   static int defaultTimerMinutes = 25;
+  static List<Note> notes = [];
 
   // Load data from SharedPreferences
   static Future<void> loadData() async {
@@ -277,6 +280,11 @@ class AppData {
       notificationsEnabled = prefs.getBool('notificationsEnabled') ?? true;
       autoStartEnabled = prefs.getBool('autoStartEnabled') ?? false;
       defaultTimerMinutes = prefs.getInt('defaultTimerMinutes') ?? 25;
+
+      final notesJson = prefs.getStringList('notes') ?? [];
+      notes = notesJson
+          .map((json) => Note.fromJson(jsonDecode(json)))
+          .toList();
     } catch (e) {
       // Keep default values if loading fails
     }
@@ -292,6 +300,11 @@ class AppData {
       await prefs.setBool('notificationsEnabled', notificationsEnabled);
       await prefs.setBool('autoStartEnabled', autoStartEnabled);
       await prefs.setInt('defaultTimerMinutes', defaultTimerMinutes);
+
+      final notesJson = notes
+          .map((note) => jsonEncode(note.toJson()))
+          .toList();
+      await prefs.setStringList('notes', notesJson);
     } catch (e) {
       // Continue even if saving fails
     }
@@ -304,6 +317,27 @@ class AppData {
     currentStreak++;
     await saveData();
   }
+}
+
+// Add Note class after AppData
+class Note {
+  String id;
+  String text;
+  DateTime createdAt;
+
+  Note({required this.id, required this.text, required this.createdAt});
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'text': text,
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory Note.fromJson(Map<String, dynamic> json) => Note(
+    id: json['id'],
+    text: json['text'],
+    createdAt: DateTime.parse(json['createdAt']),
+  );
 }
 
 class HomeScreen extends StatefulWidget {
@@ -525,10 +559,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             ),
                             border: Border.all(color: Colors.white.withOpacity(0.2)),
                           ),
-                          child: const Column(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.landscape, size: 48, color: Colors.white),
+                              Image.asset(
+                              'assets/images/your_logo.png',
+                              width: 65,
+                              height: 65,
+                            ),
+
                               SizedBox(height: 12),
                               Text('FlutterScape', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
                               Text('Explore your productive side', style: TextStyle(color: Colors.white70, fontSize: 14)),
@@ -564,6 +603,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Navigator.push(
                             context,
                             MaterialPageRoute(builder: (context) => const HelpScreen()),
+                          );
+                        }),
+                        _buildGlassListTile(Icons.note, 'Notes', () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const NotesScreen()),
                           );
                         }),
                       ],
@@ -888,8 +934,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
           ),
         ),
-      ),
-    ).animate(delay: Duration(milliseconds: 600 + (index * 100))).slideX(begin: 0.3).fadeIn(duration: 600.ms);
+      ).animate(delay: Duration(milliseconds: 600 + (index * 100))).slideX(begin: 0.3).fadeIn(duration: 600.ms));
   }
 }
 
@@ -1588,5 +1633,158 @@ class HelpScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+// Notes Screen
+class NotesScreen extends StatefulWidget {
+  const NotesScreen({super.key});
+
+  @override
+  State<NotesScreen> createState() => _NotesScreenState();
+}
+
+class _NotesScreenState extends State<NotesScreen> {
+  final _textController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ThemeManager>(
+      builder: (context, themeManager, child) {
+        final colors = themeManager.currentColors;
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Notes'),
+            backgroundColor: colors['primary'],
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: () => _showAddDialog(),
+              ),
+            ],
+          ),
+          body: ListView.builder(
+            itemCount: AppData.notes.length,
+            itemBuilder: (context, index) {
+              final note = AppData.notes[index];
+              return ListTile(
+                title: Text(note.text),
+                subtitle: Text(
+                  note.createdAt.toString().split('.')[0],
+                  style: const TextStyle(fontSize: 12),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit),
+                      onPressed: () => _showEditDialog(note),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _deleteNote(note),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddDialog() {
+    _textController.clear();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Note'),
+        content: TextField(
+          controller: _textController,
+          decoration: const InputDecoration(hintText: 'Enter your note'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (_textController.text.isNotEmpty) {
+                _addNote(_textController.text);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditDialog(Note note) {
+    _textController.text = note.text;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Note'),
+        content: TextField(
+          controller: _textController,
+          decoration: const InputDecoration(hintText: 'Edit your note'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (_textController.text.isNotEmpty) {
+                _editNote(note, _textController.text);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addNote(String text) {
+    setState(() {
+      AppData.notes.add(Note(
+        id: DateTime.now().toString(),
+        text: text,
+        createdAt: DateTime.now(),
+      ));
+    });
+    AppData.saveData();
+  }
+
+  void _editNote(Note note, String newText) {
+    setState(() {
+      final index = AppData.notes.indexOf(note);
+      AppData.notes[index] = Note(
+        id: note.id,
+        text: newText,
+        createdAt: DateTime.now(),
+      );
+    });
+    AppData.saveData();
+  }
+
+  void _deleteNote(Note note) {
+    setState(() {
+      AppData.notes.remove(note);
+    });
+    AppData.saveData();
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
   }
 }
